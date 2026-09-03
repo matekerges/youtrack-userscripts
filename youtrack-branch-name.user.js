@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTrack → Git branch név
 // @namespace    fotexnet
-// @version      2.3.2
+// @version      2.3.3
 // @description  Egy kattintással git branch nevet generál YouTrack ticketekből: azonosító + cím → EHR-102-uj-jelenleti-iv-nem-hozhato-letre
 // @author       Fotexnet
 // @match        https://fotexnet.youtrack.cloud/*
@@ -561,91 +561,18 @@
   function injectMain() {
     injectedIds.clear();
 
-    const toolbars = document.querySelectorAll(TOOLBAR_SEL);
-    if (toolbars.length) {
-      for (const toolbar of toolbars) {
-        const id = idNearToolbar(toolbar) || currentIssueId();
-        if (!id) continue;
-        const { host, first } = resolveIconRow(toolbar);
-        for (const stale of toolbar.querySelectorAll('.ytbn-holder')) {
-          if (stale.parentElement !== host) stale.remove();
-        }
-        if (place(id, host, first)) injectedIds.add(id);
+    // If YouTrack ever drops the data-test attribute the icon-row button is gone,
+    // but injectByAnchors() still puts one next to every issue id, so the script
+    // stays usable until the selector is fixed.
+    for (const toolbar of document.querySelectorAll(TOOLBAR_SEL)) {
+      const id = idNearToolbar(toolbar) || currentIssueId();
+      if (!id) continue;
+      const { host, first } = resolveIconRow(toolbar);
+      for (const stale of toolbar.querySelectorAll('.ytbn-holder')) {
+        if (stale.parentElement !== host) stale.remove();
       }
-      return;
+      if (place(id, host, first)) injectedIds.add(id);
     }
-
-    const id = currentIssueId();
-    if (!id) return;
-    const roots = issueRootsFor(id);
-    for (const root of roots) {
-      const titleEl = findTitleEl(root);
-      if (!titleEl) continue;
-      const row = findIconRow(titleEl);
-      if (row && place(id, row.host, row.first)) { injectedIds.add(id); return; }
-    }
-    for (const root of roots) {
-      const titleEl = findTitleEl(root);
-      if (!titleEl) continue;
-      const next = titleEl.nextElementSibling;
-      if (next && next.classList.contains('ytbn-holder')) {
-        if (next.dataset.ytbnId === id) { injectedIds.add(id); return; }
-        next.remove();
-      }
-      titleEl.insertAdjacentElement('afterend', holderFor(id));
-      injectedIds.add(id);
-      return;
-    }
-  }
-
-  /* -------- FALLBACK HELPERS -------- */
-
-  const TITLE_SEL = ['[data-test~="ticket-summary"]', '[data-test*="issue-summary"]', 'h1', 'h2'];
-
-  function findTitleEl(root) {
-    for (const s of TITLE_SEL) {
-      for (const el of root.querySelectorAll(s)) {
-        if ((el.textContent || '').trim().length > 1) return el;
-      }
-    }
-    return null;
-  }
-
-  function issueRootsFor(id) {
-    const roots = [];
-    const idEls = [...document.querySelectorAll('a[href*="/issue/"]')].filter((a) => {
-      const m = (a.getAttribute('href') || '').match(HREF_ID_RE);
-      return m && m[1] === id && (a.textContent || '').trim() === id;
-    });
-    for (const el of idEls) {
-      let n = el.parentElement;
-      for (let i = 0; i < 8 && n; i++, n = n.parentElement) {
-        if (findTitleEl(n)) { roots.push(n); break; }
-      }
-    }
-    roots.push(document.body);
-    return roots;
-  }
-
-  function findIconRow(titleEl) {
-    let node = titleEl;
-    for (let i = 0; i < 5 && node; i++, node = node.parentElement) {
-      const parent = node.parentElement;
-      if (!parent) break;
-
-      const direct = [...parent.children].filter((c) => c !== node && !c.contains(titleEl) && isIconBtn(c));
-      if (direct.length >= 2) return { host: parent, first: direct[0] };
-
-      for (const sib of parent.children) {
-        if (sib === node || sib.contains(titleEl)) continue;
-        const btns = [...sib.querySelectorAll('button, [role="button"], a')].filter(isIconBtn);
-        if (btns.length < 2) continue;
-        let common = btns[0].parentElement;
-        while (common && !btns.every((b) => common.contains(b))) common = common.parentElement;
-        if (common && !common.contains(titleEl)) return { host: common, first: common.firstElementChild };
-      }
-    }
-    return null;
   }
 
   function injectByAnchors() {

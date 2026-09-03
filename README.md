@@ -138,8 +138,9 @@ Ha egy YouTrack frissítés után elcsúszik a gomb, itt érdemes kezdeni:
 - A ticket címét a YouTrack REST API-ból kérjük le
   (`/api/issues/EHR-102?fields=summary`, session cookie-val), nem DOM-kaparással.
   Van DOM fallback, ha az API nem elérhető.
-- Ha a `data-test` attribútum eltűnne, van egy heurisztikus fallback ág is, ami a
-  cím mellől keresi meg az ikonsort.
+- Ha a `data-test` attribútum eltűnne, a gomb kimarad az ikonsorból, de a ticket
+  azonosítók mellé továbbra is kikerül — a script használható marad, amíg valaki
+  a szelektort javítja.
 
 A megnyitott ticket azonosítója háromféle URL-ből jöhet — ha egy negyedik nézet
 is előkerül, a `ID_PARAMS` tömbbe kell felvenni a query paramétert:
