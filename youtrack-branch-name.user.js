@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTrack → Git branch név
 // @namespace    fotexnet
-// @version      2.3.0
+// @version      2.3.1
 // @description  Egy kattintással git branch nevet generál YouTrack ticketekből: azonosító + cím → EHR-102-uj-jelenleti-iv-nem-hozhato-letre
 // @author       Fotexnet
 // @match        https://fotexnet.youtrack.cloud/*
@@ -244,7 +244,7 @@
 
   async function aiSlug(title) {
     const key = (await getKey()).trim();
-    if (!key) throw new Error('nincs API kulcs - Cmd/Ctrl + klikk a gombon');
+    if (!key) throw new Error(`nincs API kulcs - ${KEY_MODIFIER} + klikk a gombon`);
 
     const cached = await aiCacheGet(title);
     if (cached) return cached;
@@ -418,6 +418,11 @@
       <path d="M4.3 9.9h2.7a1.6 1.6 0 0 0 1.6-1.6V6.7"/>
     </svg>`;
 
+  // On macOS Ctrl + click IS the right click, so advertising "Cmd/Ctrl" there
+  // sends people straight into Safari's context menu instead of our handler.
+  const IS_MAC = /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent || '');
+  const KEY_MODIFIER = IS_MAC ? '⌘' : 'Ctrl';
+
   function makeButton(id) {
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -427,7 +432,7 @@
       `Branch név másolása (${id})`,
       CONFIG.ai.enabled ? 'Shift + klikk: eredeti magyar név' : null,
       `Alt + klikk: ${CONFIG.altClickTemplate.replace('{branch}', '…')}`,
-      CONFIG.ai.enabled ? 'Cmd/Ctrl + klikk: Gemini API kulcs' : null,
+      CONFIG.ai.enabled ? `${KEY_MODIFIER} + klikk: Gemini API kulcs` : null,
     ].filter(Boolean).join('\n');
     btn.setAttribute('aria-label', `Branch név másolása: ${id}`);
 
