@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         YouTrack → Git branch név
 // @namespace    fotexnet
-// @version      1.9.4
-// @description  Egy kattintással git branch nevet generál YouTrack ticketekből: azonosító + cím → ehr-102-uj-jelenleti-iv-nem-hozhato-letre
+// @version      2.1.0
+// @description  Egy kattintással git branch nevet generál YouTrack ticketekből: azonosító + cím → EHR-102-uj-jelenleti-iv-nem-hozhato-letre
 // @author       Fotexnet
 // @match        https://fotexnet.youtrack.cloud/*
 // @homepageURL  https://github.com/matekerges/youtrack-userscripts
@@ -10,6 +10,11 @@
 // @downloadURL  https://raw.githubusercontent.com/matekerges/youtrack-userscripts/main/youtrack-branch-name.user.js
 // @updateURL    https://raw.githubusercontent.com/matekerges/youtrack-userscripts/main/youtrack-branch-name.user.js
 // @grant        GM_setClipboard
+// @grant        GM_xmlhttpRequest
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_registerMenuCommand
+// @connect      api.anthropic.com
 // @run-at       document-idle
 // @noframes
 // ==/UserScript==
@@ -20,20 +25,37 @@
   /* -------- SETTINGS -------- */
   const CONFIG = {
     // Max length of the whole branch name, id included.
-    // Reference: "ehr-102-uj-jelenleti-iv-nem-hozhato-letre" = 41 characters.
+    // Reference: "EHR-102-uj-jelenleti-iv-nem-hozhato-letre" = 41 characters.
     // Truncation always happens on a word boundary (a dash); the id is never cut.
     maxLength: 80,
 
     // Fixed prefix if needed (e.g. 'feature/' or 'kergesmate/'). Empty = no prefix.
     prefix: '',
 
-    // Lowercase the id? (false → EHR-102-uj-jelenleti-...)
-    lowercaseId: true,
-
     // Strip a leading [Tag] / (Tag) block from the title.
-    // false → "ehr-86-attendanceperiods-uj-jelenleti-gomb-..."
-    // true  → "ehr-86-uj-jelenleti-gomb-..."
+    // false → "EHR-86-attendanceperiods-uj-jelenleti-gomb-..."
+    // true  → "EHR-86-uj-jelenleti-gomb-..."
     stripLeadingTags: false,
+
+    // English branch names via the Anthropic API. The API key is NOT stored
+    // here: this file is overwritten on every auto-update. It lives in the
+    // userscript manager's storage instead — set it from the extension menu
+    // ("Set Claude API key"). Shift + click always gives the original
+    // Hungarian slug, and that is also the fallback if the API call fails.
+    ai: {
+      enabled: true,
+
+      // If the API answers 404 for this model, pick a current one from
+      // https://docs.claude.com/en/docs/about-claude/models
+      model: 'claude-3-5-haiku-latest',
+
+      // Rough upper bound for the generated slug, in words.
+      maxWords: 6,
+
+      // How long to keep generated slugs (0 = forever). The cache means one
+      // request per ticket, and a stable name across repeated copies.
+      cacheDays: 365,
+    },
 
     // What Alt + click copies instead of the bare branch name.
     altClickTemplate: 'git checkout -b {branch}',
@@ -71,8 +93,10 @@
   }
 
   function buildBranchName(id, title) {
-    const idPart = CONFIG.lowercaseId ? id.toLowerCase() : id;
-    const head = CONFIG.prefix + idPart;
+    // The id is kept exactly as YouTrack reports it (EHR-98). Lowercasing it
+    // would risk breaking YouTrack's issue <-> branch/PR linking, which is the
+    // whole point of the naming convention.
+    const head = CONFIG.prefix + id;
     const slug = truncateSlug(slugify(title), CONFIG.maxLength - head.length - 1);
     return slug ? `${head}-${slug}` : head;
   }
@@ -121,6 +145,147 @@
       .replace(new RegExp(`^\\s*${id}\\s*[:.\\-–—]\\s*`, 'i'), '')
       .trim();
     return t && !ID_RE.test(t) ? t : '';
+  }
+
+  /* -------- AI SLUG (Anthropic) -------- */
+  // The Anthropic API blocks direct browser requests, so we go through the
+  // userscript manager's own HTTP client (@grant GM_xmlhttpRequest).
+  function gmRequest(opts) {
+    const fn =
+      typeof GM_xmlhttpRequest === 'function' ? GM_xmlhttpRequest :
+      (typeof GM !== 'undefined' && GM && GM.xmlHttpRequest) ? GM.xmlHttpRequest : null;
+    if (!fn) return Promise.reject(new Error('GM_xmlhttpRequest not available'));
+    return new Promise((resolve, reject) => {
+      fn(Object.assign({}, opts, {
+        onload: resolve,
+        onerror: () => reject(new Error('network error')),
+        ontimeout: () => reject(new Error('timeout')),
+      }));
+    });
+  }
+
+  const KEY_STORE = 'ytbn-anthropic-key';
+
+  function getKey() {
+    try {
+      return (typeof GM_getValue === 'function' ? GM_getValue(KEY_STORE, '') : '') || '';
+    } catch (_) { return ''; }
+  }
+
+  function setKey(v) {
+    try { if (typeof GM_setValue === 'function') GM_setValue(KEY_STORE, v); } catch (_) {}
+  }
+
+  // Bump this when the prompt changes, so old cached slugs are dropped.
+  const PROMPT_VERSION = 'v1';
+  const SYSTEM_PROMPT =
+    'You turn issue titles into short English git branch slugs. ' +
+    'Answer with ONLY the slug and nothing else: lowercase ASCII words joined by hyphens. ' +
+    'No issue id, no prefix, no quotes, no explanation, no trailing period. ' +
+    'Describe the work, verb first where it reads naturally. ' +
+    'Keep identifiers, file names and technical terms as they are. ' +
+    'Use at most {MAX} words.';
+
+  function aiCacheKey(text) {
+    return `ytbn-ai:${PROMPT_VERSION}:${CONFIG.ai.model}:${text}`;
+  }
+
+  function aiCacheGet(text) {
+    try {
+      const raw = typeof GM_getValue === 'function' ? GM_getValue(aiCacheKey(text), null) : null;
+      if (!raw) return null;
+      const o = JSON.parse(raw);
+      if (!o || !o.t) return null;
+      const days = CONFIG.ai.cacheDays;
+      if (days > 0 && Date.now() - (o.at || 0) > days * 864e5) return null;
+      return o.t;
+    } catch (_) { return null; }
+  }
+
+  function aiCacheSet(text, slug) {
+    try {
+      if (typeof GM_setValue === 'function') {
+        GM_setValue(aiCacheKey(text), JSON.stringify({ t: slug, at: Date.now() }));
+      }
+    } catch (_) {}
+  }
+
+  // Safety net for the model's answer: take the first line, drop a
+  // "Here is the slug:" style preamble, then run it through our own slugify so
+  // casing and punctuation can't leak into the branch name.
+  function extractSlug(raw) {
+    let t = String(raw).trim().split('\n')[0].trim();
+    const colon = t.lastIndexOf(':');
+    if (colon !== -1 && /\s/.test(t.slice(0, colon))) t = t.slice(colon + 1);
+    return slugify(t);
+  }
+
+  const aiInflight = new Map();
+
+  function aiSlug(title) {
+    const key = getKey().trim();
+    if (!key) return Promise.reject(new Error('no API key - set it from the extension menu'));
+
+    const cached = aiCacheGet(title);
+    if (cached) return Promise.resolve(cached);
+    if (aiInflight.has(title)) return aiInflight.get(title);
+
+    const p = gmRequest({
+      method: 'POST',
+      url: 'https://api.anthropic.com/v1/messages',
+      headers: {
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      data: JSON.stringify({
+        model: CONFIG.ai.model,
+        max_tokens: 64,
+        temperature: 0,
+        system: SYSTEM_PROMPT.replace('{MAX}', String(CONFIG.ai.maxWords)),
+        messages: [{ role: 'user', content: title }],
+      }),
+      timeout: 10000,
+    }).then((res) => {
+      if (res.status === 401) throw new Error('invalid API key');
+      if (res.status === 429) throw new Error('rate limited');
+      if (res.status === 404) throw new Error(`unknown model: ${CONFIG.ai.model}`);
+      if (res.status < 200 || res.status >= 300) throw new Error(`HTTP ${res.status}`);
+      const data = JSON.parse(res.responseText);
+      const raw = data && data.content && data.content[0] && data.content[0].text;
+      if (!raw) throw new Error('empty response');
+      const slug = extractSlug(raw);
+      if (!slug) throw new Error('unusable response');
+      aiCacheSet(title, slug);
+      return slug;
+    });
+
+    aiInflight.set(title, p);
+    p.catch(() => {}).then(() => aiInflight.delete(title));
+    return p;
+  }
+
+  // Title lookup -> optional AI slug -> branch name. `note` tells the toast
+  // when we fell back to the Hungarian name.
+  async function branchNameFor(id, opts) {
+    const hungarian = !!(opts && opts.hungarian);
+    let text = stripTags(await fetchSummary(id));
+    let note = '';
+    if (!hungarian && CONFIG.ai.enabled) {
+      try {
+        text = await aiSlug(text);
+      } catch (err) {
+        note = ` · magyarul, mert az angol név nem jött (${err.message})`;
+        console.warn('[ytbn] ai:', err);
+      }
+    }
+    return { branch: buildBranchName(id, text), note };
+  }
+
+  function warm(id) {
+    fetchSummary(id)
+      .then((sum) => (CONFIG.ai.enabled && getKey() ? aiSlug(stripTags(sum)) : null))
+      .catch(() => {});
   }
 
   /* -------- CLIPBOARD + TOAST -------- */
@@ -212,11 +377,15 @@
     btn.type = 'button';
     btn.className = 'ytbn-btn';
     btn.innerHTML = ICON;
-    const tipText = `Branch név másolása (${id})\nAlt + klikk: ${CONFIG.altClickTemplate.replace('{branch}', '…')}`;
+    const tipText = [
+      `Branch név másolása (${id})`,
+      CONFIG.ai.enabled ? 'Shift + klikk: eredeti magyar név' : null,
+      `Alt + klikk: ${CONFIG.altClickTemplate.replace('{branch}', '…')}`,
+    ].filter(Boolean).join('\n');
     btn.setAttribute('aria-label', `Branch név másolása: ${id}`);
 
     btn.addEventListener('mouseenter', () => {
-      fetchSummary(id).catch(() => {}); // warm up so the click is instant
+      warm(id); // warm up title + AI slug so the click is instant
       clearTimeout(tipTimer);
       tipTimer = setTimeout(() => showTip(btn, tipText), TIP_DELAY);
     }, { passive: true });
@@ -233,10 +402,10 @@
       hideTip();
       btn.classList.add('ytbn-btn--busy');
       try {
-        const branch = buildBranchName(id, stripTags(await fetchSummary(id)));
+        const { branch, note } = await branchNameFor(id, { hungarian: ev.shiftKey });
         const text = ev.altKey ? CONFIG.altClickTemplate.replace('{branch}', branch) : branch;
         const ok = await copy(text);
-        toast(ok ? text : `Nem sikerült a vágólapra másolni: ${text}`, !ok);
+        toast(ok ? text + note : `Nem sikerült a vágólapra másolni: ${text}`, !ok);
       } catch (err) {
         toast(`Nem sikerült lekérni a(z) ${id} címét (${err.message})`, true);
       } finally {
@@ -498,6 +667,21 @@
   (document.head || document.documentElement).appendChild(style);
 
   /* -------- START -------- */
+  if (typeof GM_registerMenuCommand === 'function') {
+    GM_registerMenuCommand('Set Claude API key', () => {
+      const cur = getKey();
+      const shown = cur ? `${'*'.repeat(8)}${cur.slice(-4)}` : '';
+      const v = window.prompt('Anthropic API key (leave empty to remove):', shown);
+      if (v === null) return;
+      const t = v.trim();
+      if (t === shown) return;                       // unchanged
+      if (!t) { setKey(''); window.alert('API key removed.'); return; }
+      setKey(t);
+      window.alert('API key saved. English branch names are on.');
+    });
+  }
+
+
   new MutationObserver(schedule).observe(document.documentElement, { childList: true, subtree: true });
   window.addEventListener('popstate', schedule);
   window.addEventListener('hashchange', schedule);

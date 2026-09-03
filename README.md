@@ -9,7 +9,8 @@ címéből:
 
 ```
 EHR-102 · "Új jelenléti ív nem hozható létre"
-        → ehr-102-uj-jelenleti-iv-nem-hozhato-letre
+        → EHR-102-cannot-create-timesheet          (angol, alapból)
+        → EHR-102-uj-jelenleti-iv-nem-hozhato-letre (Shift + klikk)
 ```
 
 A gomb a cím melletti ikonsorba kerül, a ceruza elé. Ott van a teljes ticket
@@ -24,6 +25,49 @@ listákban / board kártyákon / „Relates to" blokkban a ticket azonosítók m
 Az ékezetek NFD-normalizálással tűnnek el, tehát az `ő` és az `ű` is helyesen
 `o`/`u` lesz, nem esik ki. A név 80 karakternél szóhatáron csonkolódik, az
 azonosító sosem sérül.
+
+Az azonosító pontosan úgy marad, ahogy a YouTrack adja (`EHR-102`), a cím viszont
+kisbetűs lesz. Ez szándékos és nem állítható: a névkonvenció célja a YouTrack
+issue ↔ branch/PR összekapcsolása, és az azonosító kisbetűsítése ezt kockáztatná.
+
+## Angol branch nevek
+
+A cím angolra fordítását a Claude API végzi (`claude-3-5-haiku`): nem szó szerint
+fordít, hanem branch-név-formájú összefoglalót ír, ezért rövidebb és olvashatóbb
+a nyers fordításnál.
+
+Egyszer be kell állítani az API kulcsot: a userscript-kezelő menüjében (a
+böngésző eszköztárában a bővítmény ikonjára kattintva) **Set Claude API key**,
+oda kell beilleszteni. A kulcs a kezelő tárolójába kerül, **nem a script
+fájljába** — ez azért fontos, mert az auto-update minden frissítésnél felülírja a
+fájlt, tehát egy oda beírt kulcs elveszne.
+
+Ha nincs kulcs beállítva, vagy az API hívás elhasal, a script automatikusan a
+magyar nevet adja, és a toast megírja, miért. **Shift + klikkel** bármikor
+kérhető a magyar név.
+
+A generált slugok ticketenként el vannak tárolva (alapból egy évig), szóval egy
+tickethez egyszer megy kérés, és ugyanaz a név jön ki minden későbbi másolásnál.
+A tároló gépenként külön él: két kollégánál elvileg eltérhet az angol slug. Ez a
+YouTrack linkelést nem érinti, mert azt az azonosító végzi.
+
+## Összekapcsolás a YouTrackkal
+
+A branch/PR és az issue összekötése a YouTrack saját funkciója, nem a scripté. Az
+azonosítót három helyen keresi:
+
+1. a commit messageben,
+2. a branch nevében — de csak akkor, ha a commit messageben nincs azonosító,
+3. a pull request címében és leírásában.
+
+Két dolog, ami könnyen elrontja:
+
+- A branch név alapú linkeléshez be kell kapcsolni a **Check branch names for
+  issue references** opciót a VCS integráció beállításaiban. E nélkül a konvenció
+  önmagában nem linkel semmit, és nem is jelez hibát.
+- A GitHub a PR címét a branch névből generálja, a kötőjeleket szóközre cserélve:
+  `EHR-98-valami` → „EHR 98 valami", amiben az azonosító szétesik. A PR címébe
+  vagy leírásába érdemes kézzel beírni az `EHR-98`-at.
 
 ## Telepítés
 
@@ -65,9 +109,12 @@ A script tetején a `CONFIG` blokkban:
 |---|---|---|
 | `maxLength` | `80` | teljes branch név max hossza, szóhatáron csonkol |
 | `prefix` | `''` | fix előtag, pl. `'feature/'` vagy `'kergesmate/'` |
-| `lowercaseId` | `true` | `ehr-102-…` vs `EHR-102-…` |
 | `stripLeadingTags` | `false` | a cím elejéről levágja a `[Tag]` blokkot |
 | `altClickTemplate` | `git checkout -b {branch}` | mit adjon Alt + klikkre |
+| `ai.enabled` | `true` | angol név generálás; `false` esetén mindig magyar |
+| `ai.model` | `claude-3-5-haiku-latest` | ha az API 404-et ad rá, válassz aktuálisat a [Claude modellek](https://docs.claude.com/en/docs/about-claude/models) közül |
+| `ai.maxWords` | `6` | kb. ennyi szó legyen a generált slug |
+| `ai.cacheDays` | `365` | meddig tartsuk el a generált slugokat (0 = örökre) |
 | `colors` | `#6c707e` / `#ff008c` | ikon alap- és hover színe |
 
 ## Hogyan találja meg a helyét
