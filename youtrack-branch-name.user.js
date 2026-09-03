@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTrack → Git branch név
 // @namespace    fotexnet
-// @version      2.2.0
+// @version      2.3.0
 // @description  Egy kattintással git branch nevet generál YouTrack ticketekből: azonosító + cím → EHR-102-uj-jelenleti-iv-nem-hozhato-letre
 // @author       Fotexnet
 // @match        https://fotexnet.youtrack.cloud/*
@@ -14,6 +14,10 @@
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
+// @grant        GM.setClipboard
+// @grant        GM.xmlHttpRequest
+// @grant        GM.getValue
+// @grant        GM.setValue
 // @connect      generativelanguage.googleapis.com
 // @run-at       document-idle
 // @noframes
@@ -167,14 +171,33 @@
 
   const KEY_STORE = 'ytbn-gemini-key';
 
-  function getKey() {
+  // Two storage flavours: Tampermonkey and Violentmonkey expose the synchronous
+  // GM_getValue/GM_setValue, while the Safari Userscripts extension only offers
+  // the promise-based GM.getValue/GM.setValue. Everything here is async so both
+  // work. The key deliberately never falls back to localStorage: that is
+  // readable by any script on the YouTrack page.
+  async function store(name, fallback) {
     try {
-      return (typeof GM_getValue === 'function' ? GM_getValue(KEY_STORE, '') : '') || '';
-    } catch (_) { return ''; }
+      if (typeof GM_getValue === 'function') return GM_getValue(name, fallback);
+      if (typeof GM !== 'undefined' && GM && GM.getValue) return await GM.getValue(name, fallback);
+    } catch (_) { /* fall through */ }
+    return fallback;
   }
 
-  function setKey(v) {
-    try { if (typeof GM_setValue === 'function') GM_setValue(KEY_STORE, v); } catch (_) {}
+  async function storeSet(name, value) {
+    try {
+      if (typeof GM_setValue === 'function') { GM_setValue(name, value); return true; }
+      if (typeof GM !== 'undefined' && GM && GM.setValue) { await GM.setValue(name, value); return true; }
+    } catch (_) { /* fall through */ }
+    return false;
+  }
+
+  async function getKey() {
+    return (await store(KEY_STORE, '')) || '';
+  }
+
+  async function setKey(v) {
+    return storeSet(KEY_STORE, v);
   }
 
   // Bump this when the prompt changes, so old cached slugs are dropped.
@@ -191,9 +214,9 @@
     return `ytbn-ai:${PROMPT_VERSION}:${CONFIG.ai.model}:${text}`;
   }
 
-  function aiCacheGet(text) {
+  async function aiCacheGet(text) {
     try {
-      const raw = typeof GM_getValue === 'function' ? GM_getValue(aiCacheKey(text), null) : null;
+      const raw = await store(aiCacheKey(text), null);
       if (!raw) return null;
       const o = JSON.parse(raw);
       if (!o || !o.t) return null;
@@ -204,11 +227,7 @@
   }
 
   function aiCacheSet(text, slug) {
-    try {
-      if (typeof GM_setValue === 'function') {
-        GM_setValue(aiCacheKey(text), JSON.stringify({ t: slug, at: Date.now() }));
-      }
-    } catch (_) {}
+    return storeSet(aiCacheKey(text), JSON.stringify({ t: slug, at: Date.now() }));
   }
 
   // Safety net for the model's answer: take the first line, drop a
@@ -223,12 +242,12 @@
 
   const aiInflight = new Map();
 
-  function aiSlug(title) {
-    const key = getKey().trim();
-    if (!key) return Promise.reject(new Error('no API key - set it from the extension menu'));
+  async function aiSlug(title) {
+    const key = (await getKey()).trim();
+    if (!key) throw new Error('nincs API kulcs - Cmd/Ctrl + klikk a gombon');
 
-    const cached = aiCacheGet(title);
-    if (cached) return Promise.resolve(cached);
+    const cached = await aiCacheGet(title);
+    if (cached) return cached;
     if (aiInflight.has(title)) return aiInflight.get(title);
 
     const p = gmRequest({
@@ -287,10 +306,32 @@
     return { branch: buildBranchName(id, text), note };
   }
 
-  function warm(id) {
-    fetchSummary(id)
-      .then((sum) => (CONFIG.ai.enabled && getKey() ? aiSlug(stripTags(sum)) : null))
-      .catch(() => {});
+  async function warm(id) {
+    try {
+      const sum = await fetchSummary(id);
+      if (CONFIG.ai.enabled && (await getKey())) await aiSlug(stripTags(sum));
+    } catch (_) { /* the click will surface it */ }
+  }
+
+  // Entry point for the key that works everywhere. The extension menu is not an
+  // option on Safari (Userscripts has no GM_registerMenuCommand) and on Chrome it
+  // only shows up once the extension has access to the page, so the button
+  // itself has to offer a way in.
+  async function promptForKey() {
+    const cur = await getKey();
+    const shown = cur ? `${'*'.repeat(8)}${cur.slice(-4)}` : '';
+    const v = window.prompt('Gemini API key (leave empty to remove):', shown);
+    if (v === null) return;
+    const t = v.trim();
+    if (t === shown) return;
+    if (!t) {
+      await setKey('');
+      window.alert('API key removed.');
+      return;
+    }
+    const ok = await setKey(t);
+    window.alert(ok ? 'API key saved. English branch names are on.'
+                    : 'Could not save the key: this userscript manager has no storage API.');
   }
 
   /* -------- CLIPBOARD + TOAST -------- */
@@ -386,6 +427,7 @@
       `Branch név másolása (${id})`,
       CONFIG.ai.enabled ? 'Shift + klikk: eredeti magyar név' : null,
       `Alt + klikk: ${CONFIG.altClickTemplate.replace('{branch}', '…')}`,
+      CONFIG.ai.enabled ? 'Cmd/Ctrl + klikk: Gemini API kulcs' : null,
     ].filter(Boolean).join('\n');
     btn.setAttribute('aria-label', `Branch név másolása: ${id}`);
 
@@ -405,6 +447,7 @@
       ev.preventDefault();
       ev.stopPropagation();
       hideTip();
+      if (CONFIG.ai.enabled && (ev.metaKey || ev.ctrlKey)) { await promptForKey(); return; }
       btn.classList.add('ytbn-btn--busy');
       try {
         const { branch, note } = await branchNameFor(id, { hungarian: ev.shiftKey });
@@ -679,19 +722,8 @@
 
   /* -------- START -------- */
   if (typeof GM_registerMenuCommand === 'function') {
-    GM_registerMenuCommand('Set Gemini API key', () => {
-      const cur = getKey();
-      const shown = cur ? `${'*'.repeat(8)}${cur.slice(-4)}` : '';
-      const v = window.prompt('Gemini API key (leave empty to remove):', shown);
-      if (v === null) return;
-      const t = v.trim();
-      if (t === shown) return;                       // unchanged
-      if (!t) { setKey(''); window.alert('API key removed.'); return; }
-      setKey(t);
-      window.alert('API key saved. English branch names are on.');
-    });
+    GM_registerMenuCommand('Set Gemini API key', promptForKey);
   }
-
 
   new MutationObserver(schedule).observe(document.documentElement, { childList: true, subtree: true });
   window.addEventListener('popstate', schedule);

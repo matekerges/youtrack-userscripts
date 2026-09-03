@@ -32,15 +32,19 @@ issue ↔ branch/PR összekapcsolása, és az azonosító kisbetűsítése ezt k
 
 ## Angol branch nevek
 
-A cím angolra fordítását a Claude API végzi (`claude-3-5-haiku`): nem szó szerint
-fordít, hanem branch-név-formájú összefoglalót ír, ezért rövidebb és olvashatóbb
-a nyers fordításnál.
+A cím angolra fordítását a Gemini API végzi (`gemini-3.5-flash-lite`): nem szó
+szerint fordít, hanem branch-név-formájú összefoglalót ír, ezért rövidebb és
+olvashatóbb a nyers fordításnál.
 
-Egyszer be kell állítani az API kulcsot: a userscript-kezelő menüjében (a
-böngésző eszköztárában a bővítmény ikonjára kattintva) **Set Claude API key**,
-oda kell beilleszteni. A kulcs a kezelő tárolójába kerül, **nem a script
-fájljába** — ez azért fontos, mert az auto-update minden frissítésnél felülírja a
-fájlt, tehát egy oda beírt kulcs elveszne.
+Egyszer be kell állítani az API kulcsot: **Cmd + klikk** (Windows/Linux alatt
+Ctrl + klikk) a branch gombon, és a felugró mezőbe illeszd be. Ugyanez elérhető a
+userscript-kezelő menüjéből is (**Set Gemini API key**) ott, ahol a kezelő
+támogatja — Safariban például nincs ilyen menü, ott a Cmd + klikk az egyetlen út.
+
+A kulcs a kezelő tárolójába kerül, **nem a script fájljába** — ez azért fontos,
+mert az auto-update minden frissítésnél felülírja a fájlt, tehát egy oda beírt
+kulcs elveszne. Böngészőnként és gépenként külön kell megadni, nem
+szinkronizálódik.
 
 Ha nincs kulcs beállítva, vagy az API hívás elhasal, a script automatikusan a
 magyar nevet adja, és a toast megírja, miért. **Shift + klikkel** bármikor
@@ -84,7 +88,13 @@ behúzza az új verziót.
 2. **Fontos:** `chrome://extensions` → jobb felül **Developer mode** bekapcsolása
    (vagy a Tampermonkey részleteinél az *Allow User Scripts* kapcsoló). E nélkül
    a Chrome újabb verziói hibaüzenet nélkül nem futtatják a userscripteket.
-3. Fenti telepítő link → Install.
+3. **Site access:** jobb klikk a Tampermonkey ikonon → *This can read and change
+   site data* → **On all sites**. Ez két dolog miatt kell: enélkül a popupban nem
+   jelennek meg a script menüpontjai, és — ami fontosabb — a `GM_xmlhttpRequest`
+   sem működik, tehát a Gemini hívás elhasal, és mindig magyar nevet kapsz. Ha a
+   popup tetején narancssárga *"Limited runtime host permissions"* sáv van, ez
+   hiányzik.
+4. Fenti telepítő link → Install.
 
 ### Zen / Firefox
 
@@ -112,7 +122,7 @@ A script tetején a `CONFIG` blokkban:
 | `stripLeadingTags` | `false` | a cím elejéről levágja a `[Tag]` blokkot |
 | `altClickTemplate` | `git checkout -b {branch}` | mit adjon Alt + klikkre |
 | `ai.enabled` | `true` | angol név generálás; `false` esetén mindig magyar |
-| `ai.model` | `claude-3-5-haiku-latest` | ha az API 404-et ad rá, válassz aktuálisat a [Claude modellek](https://docs.claude.com/en/docs/about-claude/models) közül |
+| `ai.model` | `gemini-3.5-flash-lite` | ha az API 404-et ad rá, válassz aktuálisat a [Gemini modellek](https://ai.google.dev/gemini-api/docs/models) közül |
 | `ai.maxWords` | `6` | kb. ennyi szó legyen a generált slug |
 | `ai.cacheDays` | `365` | meddig tartsuk el a generált slugokat (0 = örökre) |
 | `colors` | `#6c707e` / `#ff008c` | ikon alap- és hover színe |
