@@ -123,12 +123,8 @@ Ha egy YouTrack frissítés után elcsúszik a gomb, itt érdemes kezdeni:
 
 - Az ikonsort a `[data-test~="issue-toolbar"]` szelektor adja. Ez stabilabb, mint
   a minified class nevek (`summaryToolbar__c90a7`), de nem örök életű.
-- A gomb **nem** ebbe az elembe kerül: az egy `space-between`-es flex konténer,
-  abban a gomb és a többi ikon a két szélére ugrana szét. Helyette a sor első
-  ikonjától (a ceruzától) felfelé keressük az első olyan őst, amiben legalább két
-  ikongomb van — az a valódi ikonsor.
-- A ceruza közvetlen szülője sem jó: az a Ring UI tooltip-wrappere, abban ülve a
-  mi gombunk hoverére is az „Edit issue" tooltip jönne fel.
+- Hogy a gomb pontosan hova kerül az ikonsoron belül, azt a `resolveIconRow()`
+  dönti el — a miértje ott van kommentben.
 - A ticket címét a YouTrack REST API-ból kérjük le
   (`/api/issues/EHR-102?fields=summary`, session cookie-val), nem DOM-kaparással.
   Van DOM fallback, ha az API nem elérhető.

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTrack → Git branch név
 // @namespace    fotexnet
-// @version      2.1.0
+// @version      2.2.0
 // @description  Egy kattintással git branch nevet generál YouTrack ticketekből: azonosító + cím → EHR-102-uj-jelenleti-iv-nem-hozhato-letre
 // @author       Fotexnet
 // @match        https://fotexnet.youtrack.cloud/*
@@ -14,7 +14,7 @@
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
-// @connect      api.anthropic.com
+// @connect      generativelanguage.googleapis.com
 // @run-at       document-idle
 // @noframes
 // ==/UserScript==
@@ -37,17 +37,17 @@
     // true  → "EHR-86-uj-jelenleti-gomb-..."
     stripLeadingTags: false,
 
-    // English branch names via the Anthropic API. The API key is NOT stored
+    // English branch names via the Gemini API. The API key is NOT stored
     // here: this file is overwritten on every auto-update. It lives in the
     // userscript manager's storage instead — set it from the extension menu
-    // ("Set Claude API key"). Shift + click always gives the original
+    // ("Set Gemini API key"). Shift + click always gives the original
     // Hungarian slug, and that is also the fallback if the API call fails.
     ai: {
       enabled: true,
 
-      // If the API answers 404 for this model, pick a current one from
-      // https://docs.claude.com/en/docs/about-claude/models
-      model: 'claude-3-5-haiku-latest',
+      // If the API answers 404 for this model, it was retired: pick a current
+      // one from https://ai.google.dev/gemini-api/docs/models
+      model: 'gemini-3.5-flash-lite',
 
       // Rough upper bound for the generated slug, in words.
       maxWords: 6,
@@ -147,9 +147,10 @@
     return t && !ID_RE.test(t) ? t : '';
   }
 
-  /* -------- AI SLUG (Anthropic) -------- */
-  // The Anthropic API blocks direct browser requests, so we go through the
-  // userscript manager's own HTTP client (@grant GM_xmlhttpRequest).
+  /* -------- AI SLUG (Google Gemini) -------- */
+  // We go through the userscript manager's own HTTP client rather than fetch():
+  // it keeps the API key out of the page context, and it is not subject to
+  // YouTrack's connect-src CSP, which could block the call outright.
   function gmRequest(opts) {
     const fn =
       typeof GM_xmlhttpRequest === 'function' ? GM_xmlhttpRequest :
@@ -164,7 +165,7 @@
     });
   }
 
-  const KEY_STORE = 'ytbn-anthropic-key';
+  const KEY_STORE = 'ytbn-gemini-key';
 
   function getKey() {
     try {
@@ -232,27 +233,31 @@
 
     const p = gmRequest({
       method: 'POST',
-      url: 'https://api.anthropic.com/v1/messages',
+      // The key goes in a header, not in the ?key= query parameter Google's
+      // quickstart uses: query strings end up in logs and history far too easily.
+      url: `https://generativelanguage.googleapis.com/v1beta/models/${CONFIG.ai.model}:generateContent`,
       headers: {
-        'x-api-key': key,
-        'anthropic-version': '2023-06-01',
+        'x-goog-api-key': key,
         'content-type': 'application/json',
       },
       data: JSON.stringify({
-        model: CONFIG.ai.model,
-        max_tokens: 64,
-        temperature: 0,
-        system: SYSTEM_PROMPT.replace('{MAX}', String(CONFIG.ai.maxWords)),
-        messages: [{ role: 'user', content: title }],
+        system_instruction: {
+          parts: [{ text: SYSTEM_PROMPT.replace('{MAX}', String(CONFIG.ai.maxWords)) }],
+        },
+        contents: [{ parts: [{ text: title }] }],
+        generationConfig: { temperature: 0, maxOutputTokens: 64 },
       }),
       timeout: 10000,
     }).then((res) => {
-      if (res.status === 401) throw new Error('invalid API key');
+      if (res.status === 403) throw new Error('invalid API key or API not enabled');
+      if (res.status === 400) throw new Error('bad request (check the model name)');
       if (res.status === 429) throw new Error('rate limited');
       if (res.status === 404) throw new Error(`unknown model: ${CONFIG.ai.model}`);
       if (res.status < 200 || res.status >= 300) throw new Error(`HTTP ${res.status}`);
       const data = JSON.parse(res.responseText);
-      const raw = data && data.content && data.content[0] && data.content[0].text;
+      const raw = data && data.candidates && data.candidates[0] &&
+        data.candidates[0].content && data.candidates[0].content.parts &&
+        data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text;
       if (!raw) throw new Error('empty response');
       const slug = extractSlug(raw);
       if (!slug) throw new Error('unusable response');
@@ -473,6 +478,12 @@
     return null;
   }
 
+  // The toolbar element itself is a space-between flex container: putting the
+  // button straight into it pushes ours to one edge and the rest to the other.
+  // The pencil's own parent is no good either — that is the Ring UI tooltip
+  // wrapper, so hovering our button would show "Edit issue". Hence: walk up
+  // from the first icon to the first ancestor holding at least two icon
+  // buttons; that one is the real icon row.
   function resolveIconRow(toolbar) {
     const iconsIn = (el) => [...el.querySelectorAll('button, [role="button"], a')].filter(isIconBtn);
 
@@ -668,10 +679,10 @@
 
   /* -------- START -------- */
   if (typeof GM_registerMenuCommand === 'function') {
-    GM_registerMenuCommand('Set Claude API key', () => {
+    GM_registerMenuCommand('Set Gemini API key', () => {
       const cur = getKey();
       const shown = cur ? `${'*'.repeat(8)}${cur.slice(-4)}` : '';
-      const v = window.prompt('Anthropic API key (leave empty to remove):', shown);
+      const v = window.prompt('Gemini API key (leave empty to remove):', shown);
       if (v === null) return;
       const t = v.trim();
       if (t === shown) return;                       // unchanged
