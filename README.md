@@ -4,8 +4,11 @@ Userscriptek a [YouTrack](https://fotexnet.youtrack.cloud)-hoz.
 
 ## youtrack-branch-name.user.js
 
-Egy kattintással git branch nevet másol a vágólapra a ticket azonosítójából és
-címéből:
+A branch nevek a YouTrack issue azonosítójával kezdődnek (pl. `EHR-102`), így a
+YouTrack össze tudja kötni az issue-t a branch-csel és a PR-rel. Ez a script
+legyártja ezt a nevet: a ticket címe mellé rak egy **copy branch name** gombot,
+ami egy kattintással a vágólapra teszi az azonosítóból és a címből képzett nevet
+— a magyar címet közben tömörítve, csak a lényeget fordítja angolra.
 
 ```
 EHR-102 · "Új jelenléti ív nem hozható létre"
@@ -16,11 +19,14 @@ EHR-102 · "Új jelenléti ív nem hozható létre"
 A gomb a cím melletti ikonsorba kerül, a ceruza elé. Ott van a teljes ticket
 oldalon, a board overlay-en és az issue lista előnézet paneljén is, valamint a
 listákban / board kártyákon / „Relates to" blokkban a ticket azonosítók mellett.
+Ha valahol mégis hiányzik, szólj.
 
 | | |
 |---|---|
 | **klikk** | branch név a vágólapra |
+| **Shift + klikk** | az eredeti magyar név |
 | **Alt + klikk** | `git checkout -b <branch név>` a vágólapra |
+| **⌘ + klikk** (Ctrl máshol) | a Gemini API kulcs beállítása |
 
 Az ékezetek NFD-normalizálással tűnnek el, tehát az `ő` és az `ű` is helyesen
 `o`/`u` lesz, nem esik ki. A név 80 karakternél szóhatáron csonkolódik, az
@@ -36,10 +42,14 @@ A cím angolra fordítását a Gemini API végzi (`gemini-3.5-flash-lite`): nem 
 szerint fordít, hanem branch-név-formájú összefoglalót ír, ezért rövidebb és
 olvashatóbb a nyers fordításnál.
 
-Egyszer be kell állítani az API kulcsot: **Cmd + klikk** (Windows/Linux alatt
-Ctrl + klikk) a branch gombon, és a felugró mezőbe illeszd be. Ugyanez elérhető a
+Egyszer be kell állítani az API kulcsot. A közös kulcsot a csapat Discord
+csatornáján találod; a kulcs a Google Cloudban le van szűkítve, kizárólag a
+Gemini API-t hívhatja vele bárki.
+
+Beállítás: **⌘ + bal klikk** (Windows/Linux alatt Ctrl + klikk) a *copy branch
+name* gombon, és a felugró mezőbe illeszd be. Ugyanez elérhető a
 userscript-kezelő menüjéből is (**Set Gemini API key**) ott, ahol a kezelő
-támogatja — Safariban például nincs ilyen menü, ott a Cmd + klikk az egyetlen út.
+támogatja — Safariban például nincs ilyen menü, ott a ⌘ + klikk az egyetlen út.
 
 A kulcs a kezelő tárolójába kerül, **nem a script fájljába** — ez azért fontos,
 mert az auto-update minden frissítésnél felülírja a fájlt, tehát egy oda beírt
@@ -75,12 +85,19 @@ Két dolog, ami könnyen elrontja:
 
 ## Telepítés
 
-Kell egy userscript-kezelő, utána a script telepítése egy kattintás:
+Kell egy userscript-kezelő, utána ez a link kell:
 
-**[→ Telepítés](https://raw.githubusercontent.com/matekerges/youtrack-userscripts/main/youtrack-branch-name.user.js)**
+```
+https://raw.githubusercontent.com/matekerges/youtrack-userscripts/main/youtrack-branch-name.user.js
+```
+
+Chrome / Firefox / Zen alatt elég megnyitni, és feljön a telepítő képernyő.
+Safariban a Userscripts appban kell **remote scriptként** hozzáadni ezzel az
+URL-lel.
 
 Frissítést nem kell kézzel követni: a kezelő a `@updateURL` alapján magától
-behúzza az új verziót.
+behúzza az új verziót, és csak akkor kér külön jóváhagyást, ha a script
+jogosultsági felülete (`@grant`, `@connect`, `@match`) változik.
 
 ### Chrome / Edge / Brave
 
@@ -94,13 +111,14 @@ behúzza az új verziót.
    sem működik, tehát a Gemini hívás elhasal, és mindig magyar nevet kapsz. Ha a
    popup tetején narancssárga *"Limited runtime host permissions"* sáv van, ez
    hiányzik.
-4. Fenti telepítő link → Install.
+4. Fenti link megnyitása → Install.
 
 ### Zen / Firefox
 
 1. [Violentmonkey](https://addons.mozilla.org/firefox/addon/violentmonkey/) vagy
    [Tampermonkey](https://addons.mozilla.org/firefox/addon/tampermonkey/) az AMO-ról.
-2. Fenti telepítő link → Install. Itt nincs developer mode kapcsoló, egyből fut.
+2. Fenti link megnyitása → Install. Itt nincs developer mode kapcsoló és nincs
+   külön site access lépés sem, telepítés után egyből működik.
 
 ### Safari (macOS / iOS)
 
@@ -108,8 +126,8 @@ behúzza az új verziót.
    nyílt forrású). macOS 12+ / Safari 14.1+.
 2. Első indításkor kér egy mappát, ahova a scripteket menti — válassz egyet.
 3. Safari → Beállítások → Bővítmények → **Userscripts** engedélyezése, és a
-   `fotexnet.youtrack.cloud`-ra **Allow**. E nélkül csendben nem fut.
-4. Fenti telepítő link → Install.
+   `fotexnet.youtrack.cloud`-ra **Always Allow**. E nélkül csendben nem fut.
+4. A Userscripts appban add hozzá a fenti URL-t **remote scriptként**.
 
 ## Beállítások
 
