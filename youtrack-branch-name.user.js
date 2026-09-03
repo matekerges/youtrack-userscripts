@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTrack → Git branch név
 // @namespace    fotexnet
-// @version      2.3.1
+// @version      2.3.2
 // @description  Egy kattintással git branch nevet generál YouTrack ticketekből: azonosító + cím → EHR-102-uj-jelenleti-iv-nem-hozhato-letre
 // @author       Fotexnet
 // @match        https://fotexnet.youtrack.cloud/*
@@ -335,16 +335,24 @@
   }
 
   /* -------- CLIPBOARD + TOAST -------- */
+  // Order matters. The manager's own clipboard API goes first because it does
+  // not depend on user activation, and Safari drops that activation while we
+  // await the title lookup and the API call — navigator.clipboard then throws.
+  // Tampermonkey exposes the synchronous GM_setClipboard, Safari's Userscripts
+  // the promise-based GM.setClipboard, so both are tried.
   async function copy(text) {
+    try {
+      if (typeof GM_setClipboard === 'function') { GM_setClipboard(text, 'text'); return true; }
+    } catch (_) { /* fall through */ }
+    try {
+      if (typeof GM !== 'undefined' && GM && GM.setClipboard) {
+        await GM.setClipboard(text, 'text');
+        return true;
+      }
+    } catch (_) { /* fall through */ }
     try {
       await navigator.clipboard.writeText(text);
       return true;
-    } catch (_) { /* fall through */ }
-    try {
-      if (typeof GM_setClipboard === 'function') {
-        GM_setClipboard(text, 'text');
-        return true;
-      }
     } catch (_) { /* fall through */ }
     try {
       const ta = document.createElement('textarea');
