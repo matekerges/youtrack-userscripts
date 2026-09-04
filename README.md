@@ -65,10 +65,18 @@ Ha nincs kulcs beállítva, vagy az API hívás elhasal, a script automatikusan 
 magyar nevet adja, és a toast megírja, miért. **Shift + klikkel** bármikor
 kérhető a magyar név.
 
-A generált slugok ticketenként el vannak tárolva (alapból egy évig), szóval egy
-tickethez egyszer megy kérés, és ugyanaz a név jön ki minden későbbi másolásnál.
+A generált slugok el vannak tárolva a userscript-kezelő tárolójában (nem csak
+memóriában: túléli a böngésző újraindítását, alapból egy évig — `ai.cacheDays`).
+Egy tickethez így egyszer megy kérés, és ugyanaz a név jön ki minden későbbi
+másolásnál.
+
+A cache kulcsa a **ticket címe**, nem az azonosítója: ha valaki átírja a címet,
+magától új név készül, nem ragad be a régi. A prompt verziója is benne van a
+kulcsban, tehát a prompt módosítása is érvényteleníti a régi bejegyzéseket.
+
 A tároló gépenként külön él: két kollégánál elvileg eltérhet az angol slug. Ez a
-YouTrack linkelést nem érinti, mert azt az azonosító végzi.
+YouTrack linkelést nem érinti, mert azt az azonosító végzi. Ha valamiért törölni
+kell egy bejegyzést, a kezelő Storage fülén a `ytbn-ai:` kezdetű kulcsok ezek.
 
 ## Összekapcsolás a YouTrackkal
 
