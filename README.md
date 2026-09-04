@@ -51,8 +51,10 @@ name* gombon, és a felugró mezőbe illeszd be. Ugyanez elérhető a
 userscript-kezelő menüjéből is (**Set Gemini API key**) ott, ahol a kezelő
 támogatja — Safariban például nincs ilyen menü, ott a ⌘ + klikk az egyetlen út.
 
-A kulcs azonnal érvénybe lép, **nem kell újratölteni az oldalt** — a script
-minden kattintásnál a tárolóból olvassa.
+A kulcs beírása után **töltsd újra a YouTrack fület**. A script ugyan minden
+kattintásnál a tárolóból olvas, de a userscript-kezelő fülenként külön példányban
+futtatja, és a frissen írt érték nem feltétlenül látszik azonnal a már megnyitott
+füleken.
 
 A kulcs a kezelő tárolójába kerül, **nem a script fájljába** — ez azért fontos,
 mert az auto-update minden frissítésnél felülírja a fájlt, tehát egy oda beírt
