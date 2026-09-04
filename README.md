@@ -51,6 +51,9 @@ name* gombon, és a felugró mezőbe illeszd be. Ugyanez elérhető a
 userscript-kezelő menüjéből is (**Set Gemini API key**) ott, ahol a kezelő
 támogatja — Safariban például nincs ilyen menü, ott a ⌘ + klikk az egyetlen út.
 
+A kulcs azonnal érvénybe lép, **nem kell újratölteni az oldalt** — a script
+minden kattintásnál a tárolóból olvassa.
+
 A kulcs a kezelő tárolójába kerül, **nem a script fájljába** — ez azért fontos,
 mert az auto-update minden frissítésnél felülírja a fájlt, tehát egy oda beírt
 kulcs elveszne. Böngészőnként és gépenként külön kell megadni, nem
@@ -94,6 +97,10 @@ https://raw.githubusercontent.com/matekerges/youtrack-userscripts/main/youtrack-
 Chrome / Firefox / Zen alatt elég megnyitni, és feljön a telepítő képernyő.
 Safariban a Userscripts appban kell **remote scriptként** hozzáadni ezzel az
 URL-lel.
+
+Telepítés — és minden frissítés — után **töltsd újra a már nyitott YouTrack
+füleket**, mert a script csak oldalbetöltéskor indul el. Ez a leggyakoribb oka
+annak, ha valakinél „nem jelenik meg a gomb".
 
 Frissítést nem kell kézzel követni: a kezelő a `@updateURL` alapján magától
 behúzza az új verziót, és csak akkor kér külön jóváhagyást, ha a script
